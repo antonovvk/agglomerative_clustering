@@ -1,18 +1,18 @@
 #pragma once
 
-struct TElement {
+typedef struct {
     int Index;
     int Cluster;
     int NumSims;
     const int* SimIds;
     const float* Sims;
-};
+} TElement;
 
-struct TParameters {
-    float SimilarityThreshold = 0.2f;
-    float RecallFactor = 1.f;
-    float RecallDecayFactor = 0.;
-};
+typedef struct {
+    float SimilarityThreshold;
+    float RecallFactor;
+    float RecallDecayFactor;
+} TParameters;
 
 #ifdef __cplusplus
 extern "C" {

@@ -72,7 +72,7 @@ struct TElements {
 };
 
 int Main(int argc, const char** argv) {
-    TParameters params;
+    TParameters params = {0.2, 1, 0};
 
     {
         TArgsParser argsParser;
