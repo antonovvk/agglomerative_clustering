@@ -1,12 +1,14 @@
 #include "dsu.h"
 #include "set_stats.h"
-
 #include "clustering.h"
 
 #include <algorithm>
-#include <vector>
-#include <set>
+#include <iostream>
 #include <unordered_map>
+#include <unordered_set>
+#include <set>
+#include <sstream>
+#include <vector>
 
 namespace NAgglomerativePrivate {
     struct TUnityReward {
@@ -46,7 +48,8 @@ namespace NAgglomerativePrivate {
 
     class TClusteringPrivate {
     private:
-        TClusteringParameters ClusteringParameters;
+        const TParameters Params;
+        const int N;
 
         std::set<TUnityReward, std::greater<>> UnityRewards;
         std::vector<std::unordered_map<size_t, TSubsetStats>> RelationStats;
@@ -54,13 +57,13 @@ namespace NAgglomerativePrivate {
 
         TDisjointSetUnion DSU;
 
-        TClusters Clusters;
     public:
-        TClusteringPrivate(const TElements& elements, const TClusteringParameters& clusteringParameters)
-            : ClusteringParameters(clusteringParameters)
-            , RelationStats(elements.Size())
-            , ClusterStats(elements.Size())
-            , DSU(elements.Size())
+        TClusteringPrivate(int n, const TElement* elements, const TParameters& params)
+            : Params(params)
+            , N(n)
+            , RelationStats(n)
+            , ClusterStats(n)
+            , DSU(n)
         {
             InitRelations(elements);
 
@@ -69,59 +72,53 @@ namespace NAgglomerativePrivate {
                 ProcessUnityRelations(unity);
                 ProcessEliminatedRelations(unity);
             }
-
-            FillClusters(elements);
         }
 
-        const TClusters& GetClusters() const {
-            return Clusters;
-        }
+        int FillClusters(TElement* elements) const;
 
         size_t GetClusterId(const size_t elementIdx) const {
             return DSU.GetRoot(elementIdx);
         }
+
     private:
-        void FillClusters(const TElements& elements);
-        void InitRelations(const TElements& elements);
+        void InitRelations(const TElement* elements);
 
         TUnity NextUnity();
         void ProcessUnityRelations(const TUnity& unity);
         void ProcessEliminatedRelations(const TUnity& unity);
     };
 
-    void TClusteringPrivate::FillClusters(const TElements& elements) {
-        std::unordered_map<size_t, size_t> clusterIdToNumber;
-        for (const TElement& element : elements) {
-            const size_t clusterId = GetClusterId(element.Index);
-            size_t& remappedClusterId = clusterIdToNumber[clusterId];
-            if (!remappedClusterId) {
-                remappedClusterId = clusterIdToNumber.size();
-                Clusters.push_back(TCluster());
-            }
-            Clusters[remappedClusterId - 1].push_back(element.Id);
+    int TClusteringPrivate::FillClusters(TElement* elements) const {
+        std::unordered_set<int> clusters;
+        for (int i = 0; i < N; ++i) {
+            const auto c = GetClusterId(i);
+            elements[i].Cluster = c;
+            clusters.insert(c);
         }
+        return clusters.size();
     }
 
-    void TClusteringPrivate::InitRelations(const TElements& elements) {
-        for (const TElement& element : elements) {
-            ClusterStats[element.Index] = TSetStats::InitTrivial(element.SumSimilarities);
+    void TClusteringPrivate::InitRelations(const TElement* elements) {
+        std::vector<double> sumSimilarities(N);
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < elements[i].NumSims; ++j) {
+                sumSimilarities[i] += elements[i].Sims[j];
+            }
+            ClusterStats[i] = TSetStats::InitTrivial(sumSimilarities[i]);
         }
 
-        for (const TElement& element : elements) {
-            const size_t elementIdx = element.Index;
-            for (auto&& neighbourWithSimilarity : element.Similarities) {
-                const size_t neighbourIdx = neighbourWithSimilarity.first;
+        for (int elementIdx = 0; elementIdx < N; ++elementIdx) {
+            for (int j = 0; j < elements[elementIdx].NumSims; ++j) {
+                const float similarity = elements[elementIdx].Sims[j];
+                const int neighbourIdx = elements[elementIdx].SimIds[j];
                 if (neighbourIdx > elementIdx) {
                     continue;
                 }
 
-                const float similarity = neighbourWithSimilarity.second;
-                const TElement& neighbour = elements.GetElement(neighbourIdx);
-
                 TSubsetStats relationStats;
                 relationStats.PerMatrixElementSum = 2.f * similarity;
-                relationStats.PerRowSum = similarity * (1.f / element.SumSimilarities + 1.f / neighbour.SumSimilarities);
-                relationStats.Reward = TSetStats::UnityReward(ClusterStats[elementIdx], ClusterStats[neighbourIdx], relationStats, ClusteringParameters);
+                relationStats.PerRowSum = similarity * (1.f / sumSimilarities[elementIdx] + 1.f / sumSimilarities[neighbourIdx]);
+                relationStats.Reward = TSetStats::UnityReward(ClusterStats[elementIdx], ClusterStats[neighbourIdx], relationStats, Params);
 
                 if (relationStats.Reward < 0) {
                     continue;
@@ -178,7 +175,7 @@ namespace NAgglomerativePrivate {
             if (eliminatedRelationIt != eliminatedRelationStats.end()) {
                 relationStats += eliminatedRelationIt->second;
             }
-            unityReward.Reward = TSetStats::UnityReward(ClusterStats[unity.UnityClusterId], ClusterStats[neighbour], relationStats, ClusteringParameters);
+            unityReward.Reward = TSetStats::UnityReward(ClusterStats[unity.UnityClusterId], ClusterStats[neighbour], relationStats, Params);
 
             if (unityReward.Reward < 0.) {
                 unityRelationStats.erase(it++);
@@ -213,7 +210,7 @@ namespace NAgglomerativePrivate {
                 continue;
             }
 
-            unityReward.Reward = TSetStats::UnityReward(ClusterStats[unity.UnityClusterId], ClusterStats[neighbour], relationStats, ClusteringParameters);
+            unityReward.Reward = TSetStats::UnityReward(ClusterStats[unity.UnityClusterId], ClusterStats[neighbour], relationStats, Params);
             if (unityReward.Reward < 0.) {
                 continue;
             }
@@ -231,7 +228,19 @@ namespace NAgglomerativePrivate {
     }
 }
 
-const TClusters DoCluster(const TElements& elements, const TClusteringParameters& clusteringParameters) {
-    NAgglomerativePrivate::TClusteringPrivate clustering(elements, clusteringParameters);
-    return clustering.GetClusters();
+int AgglomerativeClustering(int n, TElement* elements, const TParameters* params, const char** err) {
+    try {
+        NAgglomerativePrivate::TClusteringPrivate clustering(n, elements, *params);
+        return clustering.FillClusters(elements);
+    } catch (const std::exception& e) {
+        std::ostringstream msg;
+        msg << "Caught exception: " << e.what() << std::endl;
+        static auto errHolder = msg.str();
+        if (err) {
+            *err = errHolder.c_str();
+        } else {
+            std::cerr << errHolder << std::endl;
+        }
+    }
+    return -1;
 }

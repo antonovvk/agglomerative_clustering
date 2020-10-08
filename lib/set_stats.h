@@ -1,6 +1,8 @@
 #pragma once
 
-#include "clustering_parameters.h"
+#include "clustering.h"
+
+#include <cmath>
 
 struct TSubsetStats {
     float Reward = 0.;
@@ -33,6 +35,14 @@ struct TSetStats {
         return Stats.PerRowSum / Count;
     }
 
+    static double CombineMetrics(const TParameters& params, const double precision, const double recall, const size_t uniteSize) {
+        float recallFactor = params.RecallFactor;
+        if (params.RecallDecayFactor) {
+            recallFactor *= params.RecallDecayFactor / (params.RecallDecayFactor + uniteSize);
+        }
+        return std::pow(recall, recallFactor) * precision;
+    }
+
     static TSetStats InitTrivial(const double sumElementSimilarities) {
         TSetStats result;
         result.Count = 1;
@@ -49,20 +59,20 @@ struct TSetStats {
         return unity;
     }
 
-    static float UnityReward(const TSetStats& lhs, const TSetStats& rhs, const TSubsetStats& crossStats, const TClusteringParameters& parameters) {
+    static float UnityReward(const TSetStats& lhs, const TSetStats& rhs, const TSubsetStats& crossStats, const TParameters& params) {
         TSetStats unity(lhs);
         unity.Count += rhs.Count;
         unity.Stats += rhs.Stats;
 
         const float fragmentsPrecision = (lhs.SumPrecisions() + rhs.SumPrecisions()) / unity.Count;
         const float fragmentsRecall = unity.AvgRecall();
-        const float fragmentsECC = parameters.CombineMetrics(fragmentsPrecision, fragmentsRecall, unity.Count);
+        const float fragmentsECC = CombineMetrics(params, fragmentsPrecision, fragmentsRecall, unity.Count);
 
         unity.Stats += crossStats;
 
         const float unityPrecision = unity.SumPrecisions() / unity.Count;
         const float unityRecall = unity.AvgRecall();
-        const float unityECC = parameters.CombineMetrics(unityPrecision, unityRecall, unity.Count);
+        const float unityECC = CombineMetrics(params, unityPrecision, unityRecall, unity.Count);
 
         const float reward = unityECC - fragmentsECC;
         if (reward < 0.f) {

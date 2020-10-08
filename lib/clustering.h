@@ -1,11 +1,25 @@
 #pragma once
 
-#include <string>
+struct TElement {
+    int Index;
+    int Cluster;
+    int NumSims;
+    const int* SimIds;
+    const float* Sims;
+};
 
-#include "clustering_parameters.h"
-#include "elements.h"
+struct TParameters {
+    float SimilarityThreshold = 0.2f;
+    float RecallFactor = 1.f;
+    float RecallDecayFactor = 0.;
+};
 
-using TCluster = std::vector<std::string>;
-using TClusters = std::vector<TCluster>;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-const TClusters DoCluster(const TElements& elements, const TClusteringParameters& clusteringParameters);
+int AgglomerativeClustering(int n, TElement* elements, const TParameters* params, const char** err);
+
+#ifdef __cplusplus
+}
+#endif
