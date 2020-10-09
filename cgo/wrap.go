@@ -46,16 +46,16 @@ func AgglomerativeClustering(elements []*Element, parameters Parameters) (res in
 	n := len(elements)
 	ids := make([]*C.int, n)
 	sims := make([]*C.float, n)
-	elems := C.MakeElements(C.int(n))
+	elems := C.ACMakeElements(C.int(n))
 	for idx, elem := range elements {
-		idList := C.MakeInts(C.int(len(elem.Sims)))
-		simList := C.MakeFloats(C.int(len(elem.Sims)))
+		idList := C.ACMakeInts(C.int(len(elem.Sims)))
+		simList := C.ACMakeFloats(C.int(len(elem.Sims)))
 		pos := 0
 		for l, s := range elem.Sims {
-			C.UpdateLists(C.int(pos), idList, simList, C.int(index[l]), C.float(s))
+			C.ACUpdateLists(C.int(pos), idList, simList, C.int(index[l]), C.float(s))
 			pos++
 		}
-		C.UpdateElement(elems, C.int(idx), C.int(pos), idList, simList)
+		C.ACUpdateElement(elems, C.int(idx), C.int(pos), idList, simList)
 		ids = append(ids, idList)
 		sims = append(sims, simList)
 	}
@@ -64,7 +64,7 @@ func AgglomerativeClustering(elements []*Element, parameters Parameters) (res in
 		err = fmt.Errorf("AgglomerativeClustering failed: %s", C.GoString(errStr))
 	}
 	for idx := range elements {
-		elem := C.GetElement(elems, C.int(idx))
+		elem := C.ACGetElement(elems, C.int(idx))
 		elements[idx].Cluster = int(elem.Cluster)
 
 		C.free(unsafe.Pointer(elem.SimIds))
