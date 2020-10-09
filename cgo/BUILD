@@ -4,6 +4,8 @@ go_library(
     name = "go_default_library",
     srcs = [
         "wrap.go",
+        "wrap.h",
+        "wrap.c",
     ],
     cdeps = [
         "//:lib",
